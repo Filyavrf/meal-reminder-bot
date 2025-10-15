@@ -4,7 +4,6 @@ from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 from datetime import time, datetime
 import pytz
-import asyncio
 
 # Настройки - Новосибирский часовой пояс
 TOKEN = os.environ.get('TOKEN')
@@ -19,6 +18,7 @@ MEAL_TIMES = [
 
 MEAL_NAMES = ["завтрак", "обед", "ужин"]
 USER_CONFIRMATIONS = {}
+USER_JOBS = {}  # Храним задания для каждого пользователя
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -30,9 +30,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
 
-    # Сохраняем chat_id в context для использования в job queue
-    context.user_data['chat_id'] = chat_id
-    context.user_data['user_id'] = user_id
+    # Останавливаем старые задания для этого пользователя, если они есть
+    if user_id in USER_JOBS:
+        for job in USER_JOBS[user_id]:
+            job.schedule_removal()
 
     keyboard = [['Поел(а)']]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -42,24 +43,34 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
-    # Добавляем задания для этого пользователя
+    # Создаем новые задания для этого пользователя
+    user_jobs = []
+
+    # Добавляем задания для приёмов пищи
     for i, meal_time in enumerate(MEAL_TIMES):
-        context.application.job_queue.run_daily(
+        job = context.application.job_queue.run_daily(
             meal_reminder,
             meal_time,
             days=tuple(range(7)),
-            data={'meal_name': MEAL_NAMES[i].capitalize(), 'chat_id': chat_id},
+            data={'meal_name': MEAL_NAMES[i].capitalize(), 'chat_id': chat_id, 'user_id': user_id},
             name=f"meal_reminder_{user_id}_{i}"
         )
+        user_jobs.append(job)
 
     # Проверка пропущенных приёмов пищи каждый час
-    context.application.job_queue.run_repeating(
+    job = context.application.job_queue.run_repeating(
         check_missed_meals,
         interval=3600,
         first=10,
         data={'user_id': user_id, 'chat_id': chat_id},
         name=f"missed_meals_check_{user_id}"
     )
+    user_jobs.append(job)
+
+    # Сохраняем задания для пользователя
+    USER_JOBS[user_id] = user_jobs
+
+    await update.message.reply_text("✅ Напоминания настроены! Буду напоминать о приёмах пищи 🍽️")
 
 
 async def handle_meal_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -69,7 +80,7 @@ async def handle_meal_confirmation(update: Update, context: ContextTypes.DEFAULT
     user = update.effective_user
     responses = [
         f"Молодец, {user.first_name}! Ты такой(ая) умничка 🥰",
-        "Обожаю, когда ты заботишься о себе! 💖",
+        "Обожаю, когда ты заботиться о себе! 💖",
         "Так держать, мой хороший котик! 😻",
         "Ты сделал(а) мой день лучше! 🌈",
         "Как же я тобой горжусь! ✨",
@@ -151,7 +162,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """
 🍽️ Помощь по боту-напоминателю:
 
-/start - Начать работу
+/start - Начать работу (настройка напоминаний)
 /stats - Статистика приёмов пищи
 /help - Эта справка
 
@@ -163,6 +174,19 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Нажимай "Поел(а)" после каждого приёма пищи!
     """
     await update.message.reply_text(help_text)
+
+
+async def stop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Останавливает напоминания для пользователя"""
+    user_id = update.effective_user.id
+
+    if user_id in USER_JOBS:
+        for job in USER_JOBS[user_id]:
+            job.schedule_removal()
+        del USER_JOBS[user_id]
+        await update.message.reply_text("⏸️ Напоминания остановлены! Используй /start чтобы возобновить.")
+    else:
+        await update.message.reply_text("ℹ️ У тебя нет активных напоминаний.")
 
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -181,14 +205,13 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("stop", stop_command))
     application.add_handler(MessageHandler(filters.Text("Поел(а)"), handle_meal_confirmation))
 
     # Обработчик ошибок
     application.add_error_handler(error_handler)
 
-    logging.info("Бот запущен и работает по Новосибирскому времени!")
-
-    # Используем простой запуск без asyncio.run
+    logging.info("✅ Бот запущен и работает по Новосибирскому времени!")
     application.run_polling()
 
 
