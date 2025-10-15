@@ -1,5 +1,6 @@
 import logging
 import os
+import asyncio
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 from datetime import time, datetime
@@ -24,6 +25,8 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+
+# ===== Команды =====
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -53,7 +56,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     # Проверка пропущенных приёмов пищи
-    context.job_queue.run_repeating(check_missed_meals, interval=3600, first=10, chat_id=chat_id, name=f"{user_id}-check")
+    context.job_queue.run_repeating(
+        check_missed_meals,
+        interval=3600,
+        first=10,
+        chat_id=chat_id,
+        name=f"{user_id}-check"
+    )
 
 
 async def handle_meal_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -69,6 +78,8 @@ async def handle_meal_confirmation(update: Update, context: ContextTypes.DEFAULT
     ]
     await update.message.reply_text(random.choice(responses))
 
+
+# ===== Напоминания =====
 
 async def meal_reminder(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
@@ -110,6 +121,8 @@ async def check_missed_meals(context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(chat_id=context.job.chat_id, text=random.choice(messages))
 
 
+# ===== Дополнительные команды =====
+
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     last_confirmation = USER_CONFIRMATIONS.get(user_id)
@@ -132,34 +145,41 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """
 🍽️ Помощь по боту-напоминателю:
 
-/start - Начать работу
-/stats - Статистика приёмов пищи
-/help - Эта справка
+/start - Начать работу  
+/stats - Статистика приёмов пищи  
+/help - Эта справка  
 
-Бот напоминает о (по Новосибирскому времени):
-• Завтраке 🥞 - 8:00
+Бот напоминает о (по Новосибирскому времени):  
+• Завтраке 🥞 - 8:00  
 • Обеде 🍲 - 13:00  
-• Ужине 🍛 - 19:00
+• Ужине 🍛 - 19:00  
 
 Нажимай "Поел(а)" после каждого приёма пищи!
     """
     await update.message.reply_text(help_text)
 
 
-def main():
+# ===== Основная функция =====
+
+async def main():
     if not TOKEN:
         logging.error("❌ Токен бота не установлен! Добавьте переменную TOKEN в Render → Environment.")
         return
 
     application = Application.builder().token(TOKEN).build()
+
+    # Удаляем webhook перед запуском polling
+    await application.bot.delete_webhook(drop_pending_updates=True)
+
+    # Регистрируем хендлеры
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(MessageHandler(filters.Text("Поел(а)"), handle_meal_confirmation))
 
     logging.info("✅ Бот запущен и работает по Новосибирскому времени!")
-    application.run_polling()
+    await application.run_polling()
 
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    asyncio.run(main())
