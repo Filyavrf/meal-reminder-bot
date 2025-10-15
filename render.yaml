@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: meal-reminder-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: TOKEN
+        value: 8309452751:AAHdy3lP8CFTD-ggQlh6NN3cMBJul5Q9KA0

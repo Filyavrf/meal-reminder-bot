@@ -1,7 +1,7 @@
 import logging
 import os
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, CallbackContext, MessageHandler, Filters
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 from datetime import time, datetime
 import pytz
 
@@ -25,17 +25,21 @@ logging.basicConfig(
 )
 
 
-def start(update: Update, context: CallbackContext):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Сохраняем chat_id для отправки напоминаний
+    context.job_queue.chat_id = update.effective_chat.id
+    context.job_queue.user_id = update.effective_user.id
+
     keyboard = [['Поел(а)']]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    update.message.reply_text(
+    await update.message.reply_text(
         'Привет, котик! Я буду напоминать тебе о приёмах пищи по Новосибирскому времени 🍽️\n'
         'Я также буду проверять, не пропустил(а) ли ты приём пищи 💕',
         reply_markup=reply_markup
     )
 
 
-def handle_meal_confirmation(update: Update, context: CallbackContext):
+async def handle_meal_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     USER_CONFIRMATIONS[user_id] = datetime.now(TIMEZONE)
 
@@ -48,13 +52,12 @@ def handle_meal_confirmation(update: Update, context: CallbackContext):
         "Как же я тобой горжусь! ✨",
     ]
     import random
-    update.message.reply_text(random.choice(responses))
+    await update.message.reply_text(random.choice(responses))
 
 
-def meal_reminder(context: CallbackContext):
+async def meal_reminder(context: ContextTypes.DEFAULT_TYPE):
     job = context.job
-    meal_name = job.context['meal_name']
-    chat_id = job.context['chat_id']
+    meal_name = job.data
 
     keyboard = [['Поел(а)']]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -66,10 +69,10 @@ def meal_reminder(context: CallbackContext):
     ]
     import random
     message = random.choice(messages)
-    context.bot.send_message(chat_id, text=message, reply_markup=reply_markup)
+    await context.bot.send_message(chat_id=context.job.chat_id, text=message, reply_markup=reply_markup)
 
 
-def check_missed_meals(context: CallbackContext):
+async def check_missed_meals(context: ContextTypes.DEFAULT_TYPE):
     """Проверяет пропущенные приёмы пищи по Новосибирскому времени"""
     current_time = datetime.now(TIMEZONE)
     current_hour = current_time.hour
@@ -84,7 +87,7 @@ def check_missed_meals(context: CallbackContext):
         current_meal = 2
 
     if current_meal is not None:
-        user_id = context.job.context['user_id']
+        user_id = context.job.user_id
         last_confirmation = USER_CONFIRMATIONS.get(user_id)
 
         if last_confirmation is None or last_confirmation.date() < current_time.date():
@@ -96,10 +99,10 @@ def check_missed_meals(context: CallbackContext):
             ]
             import random
             message = random.choice(messages)
-            context.bot.send_message(user_id, text=message)
+            await context.bot.send_message(chat_id=context.job.chat_id, text=message)
 
 
-def stats_command(update: Update, context: CallbackContext):
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает статистику подтверждений"""
     user_id = update.effective_user.id
     last_confirmation = USER_CONFIRMATIONS.get(user_id)
@@ -117,10 +120,10 @@ def stats_command(update: Update, context: CallbackContext):
     else:
         message = "📊 Я ещё не получал подтверждений от тебя. Надеюсь, ты кушаешь регулярно!"
 
-    update.message.reply_text(message)
+    await update.message.reply_text(message)
 
 
-def help_command(update: Update, context: CallbackContext):
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """
 🍽️ Помощь по боту-напоминателю:
 
@@ -135,12 +138,7 @@ def help_command(update: Update, context: CallbackContext):
 
 Нажимай "Поел(а)" после каждого приёма пищи!
     """
-    update.message.reply_text(help_text)
-
-
-def error_handler(update: Update, context: CallbackContext):
-    """Обработчик ошибок"""
-    logging.error(f'Ошибка: {context.error}')
+    await update.message.reply_text(help_text)
 
 
 def main():
@@ -148,30 +146,19 @@ def main():
         logging.error("Токен бота не установлен! Добавьте переменную TOKEN в настройки Render")
         return
 
-    # Создаем Updater и передаем ему токен
-    updater = Updater(TOKEN, use_context=True)
-
-    # Получаем диспетчер для регистрации обработчиков
-    dp = updater.dispatcher
+    application = Application.builder().token(TOKEN).build()
 
     # Обработчики команд
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("stats", stats_command))
-    dp.add_handler(CommandHandler("help", help_command))
-    dp.add_handler(MessageHandler(Filters.text("Поел(а)"), handle_meal_confirmation))
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("stats", stats_command))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(MessageHandler(filters.Text("Поел(а)"), handle_meal_confirmation))
 
-    # Обработчик ошибок
-    dp.add_error_handler(error_handler)
+    # Добавление заданий для напоминаний (будет настроено при вызове /start)
+    # Проверка пропущенных приёмов пищи каждый час (будет настроено при вызове /start)
 
-    # Получаем job_queue для планирования задач
-    jq = updater.job_queue
-
-    # Запускаем бота
-    updater.start_polling()
-
-    # Бот работает до прерывания
     logging.info("Бот запущен и работает по Новосибирскому времени!")
-    updater.idle()
+    application.run_polling()
 
 
 if __name__ == '__main__':
