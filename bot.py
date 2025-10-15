@@ -107,7 +107,7 @@ async def check_missed_meals(context: ContextTypes.DEFAULT_TYPE):
                 f"💔 Я не вижу подтверждения {meal_name}а... Ты точно покушал(а)?",
                 f"🌟 Напоминаю: важно не пропускать приёмы пищи! Как насчёт {meal_name}а?"
             ]
-            
+
             await context.bot.send_message(chat_id=context.job.chat_id, text=random.choice(messages))
 
 # ================== СТАТИСТИКА ==================
@@ -166,5 +166,4 @@ async def main():
     await application.run_polling()
 
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    main()
