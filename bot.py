@@ -93,7 +93,7 @@ async def setup_reminders(application: Application, chat_id: int):
     reminders = [
         ("breakfast", "завтрак", "8:00"),
         ("lunch", "обед", "13:00"),
-        ("dinner", "ужин", "21:08")
+        ("dinner", "ужин", "21:15")
     ]
 
     for meal_type, meal_name, time_str in reminders:
