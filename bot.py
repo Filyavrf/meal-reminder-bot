@@ -1,5 +1,7 @@
 import os
 import logging
+from datetime import time
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -23,7 +25,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
     user = update.effective_user
     await update.message.reply_text(
-        f"Привет, {user.first_name}! Я буду напоминать тебе о приемах пищи 🍽️\n"
+        f"Привет, любимая! Я буду напоминать тебе о приемах пищи 🍽️\n"
         "Теперь ты будешь получать напоминания:\n"
         "🍳 Завтрак в 8:00\n"
         "🍲 Обед в 13:00\n"
@@ -91,7 +93,7 @@ async def setup_reminders(application: Application, chat_id: int):
     reminders = [
         ("breakfast", "завтрак", "8:00"),
         ("lunch", "обед", "13:00"),
-        ("dinner", "ужин", "19:00")
+        ("dinner", "ужин", "21:08")
     ]
 
     for meal_type, meal_name, time_str in reminders:
