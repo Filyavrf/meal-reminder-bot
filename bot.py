@@ -4,18 +4,18 @@ from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 from datetime import time, datetime
 import pytz
+import random
 
-# Настройки - Новосибирский часовой пояс
+# Настройки
 TOKEN = os.environ.get('TOKEN')
 TIMEZONE = pytz.timezone('Asia/Novosibirsk')
 
-# Время приёмов пищи (по Новосибирску)
+# Время приёмов пищи
 MEAL_TIMES = [
-    time(8, 0, 0, tzinfo=TIMEZONE),  # Завтрак в 8:00 Новосибирск
-    time(13, 0, 0, tzinfo=TIMEZONE),  # Обед в 13:00 Новосибирск
-    time(19, 0, 0, tzinfo=TIMEZONE)  # Ужин в 19:00 Новосибирск
+    time(8, 0, 0),
+    time(13, 0, 0),
+    time(19, 0, 0)
 ]
-
 MEAL_NAMES = ["завтрак", "обед", "ужин"]
 USER_CONFIRMATIONS = {}
 
@@ -26,32 +26,47 @@ logging.basicConfig(
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Сохраняем chat_id для отправки напоминаний
-    context.job_queue.chat_id = update.effective_chat.id
-    context.job_queue.user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
 
     keyboard = [['Поел(а)']]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
     await update.message.reply_text(
-        'Привет, котик! Я буду напоминать тебе о приёмах пищи по Новосибирскому времени 🍽️\n'
-        'Я также буду проверять, не пропустил(а) ли ты приём пищи 💕',
+        'Привет, котик! Я буду напоминать тебе о приёмах пищи по Новосибирскому времени 🍽️',
         reply_markup=reply_markup
     )
+
+    # Удаляем старые задачи
+    for job in context.job_queue.jobs():
+        job.schedule_removal()
+
+    # Планируем напоминания
+    for meal_time, meal_name in zip(MEAL_TIMES, MEAL_NAMES):
+        context.job_queue.run_daily(
+            meal_reminder,
+            time=meal_time,
+            days=(0, 1, 2, 3, 4, 5, 6),
+            chat_id=chat_id,
+            name=f"{user_id}-{meal_name}",
+            data=meal_name
+        )
+
+    # Проверка пропущенных приёмов пищи
+    context.job_queue.run_repeating(check_missed_meals, interval=3600, first=10, chat_id=chat_id, name=f"{user_id}-check")
 
 
 async def handle_meal_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     USER_CONFIRMATIONS[user_id] = datetime.now(TIMEZONE)
 
-    user = update.effective_user
     responses = [
-        f"Молодец, {user.first_name}! Ты такой(ая) умничка 🥰",
+        f"Молодец, {update.effective_user.first_name}! Ты умничка 🥰",
         "Обожаю, когда ты заботишься о себе! 💖",
         "Так держать, мой хороший котик! 😻",
         "Ты сделал(а) мой день лучше! 🌈",
         "Как же я тобой горжусь! ✨",
     ]
-    import random
     await update.message.reply_text(random.choice(responses))
 
 
@@ -63,33 +78,28 @@ async def meal_reminder(context: ContextTypes.DEFAULT_TYPE):
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
     messages = [
-        f"🍽️ Котик, пора кушать! ({meal_name})\nНе забудь позаботиться о себе 💕",
-        f"🥣 Время {meal_name.lower()}а, мой хороший! Ты ведь не забыл(а) покушать?",
-        f"💫 Котик, {meal_name} ждёт тебя! Ты важнее всех дел на свете 🌟",
+        f"🍽️ Котик, пора кушать! ({meal_name}) 💕",
+        f"🥣 Время {meal_name.lower()}а, мой хороший! Не забудь покушать!",
+        f"💫 Котик, {meal_name} ждёт тебя! 🌟",
     ]
-    import random
-    message = random.choice(messages)
-    await context.bot.send_message(chat_id=context.job.chat_id, text=message, reply_markup=reply_markup)
+    await context.bot.send_message(chat_id=job.chat_id, text=random.choice(messages), reply_markup=reply_markup)
 
 
 async def check_missed_meals(context: ContextTypes.DEFAULT_TYPE):
-    """Проверяет пропущенные приёмы пищи по Новосибирскому времени"""
     current_time = datetime.now(TIMEZONE)
     current_hour = current_time.hour
-
-    # Определяем, какой приём пищи должен быть сейчас
     current_meal = None
-    if 7 <= current_hour < 11:  # Завтрак
+
+    if 7 <= current_hour < 11:
         current_meal = 0
-    elif 12 <= current_hour < 15:  # Обед
+    elif 12 <= current_hour < 15:
         current_meal = 1
-    elif 18 <= current_hour < 21:  # Ужин
+    elif 18 <= current_hour < 21:
         current_meal = 2
 
     if current_meal is not None:
-        user_id = context.job.user_id
-        last_confirmation = USER_CONFIRMATIONS.get(user_id)
-
+        user_id = context.job.name.split('-')[0]
+        last_confirmation = USER_CONFIRMATIONS.get(int(user_id))
         if last_confirmation is None or last_confirmation.date() < current_time.date():
             meal_name = MEAL_NAMES[current_meal]
             messages = [
@@ -97,20 +107,16 @@ async def check_missed_meals(context: ContextTypes.DEFAULT_TYPE):
                 f"💔 Я не вижу подтверждения {meal_name}а... Ты точно покушал(а)?",
                 f"🌟 Напоминаю: важно не пропускать приёмы пищи! Как насчёт {meal_name}а?"
             ]
-            import random
-            message = random.choice(messages)
-            await context.bot.send_message(chat_id=context.job.chat_id, text=message)
+            await context.bot.send_message(chat_id=context.job.chat_id, text=random.choice(messages))
 
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает статистику подтверждений"""
     user_id = update.effective_user.id
     last_confirmation = USER_CONFIRMATIONS.get(user_id)
 
     if last_confirmation:
         time_diff = datetime.now(TIMEZONE) - last_confirmation
         hours = int(time_diff.total_seconds() / 3600)
-
         if hours < 1:
             message = "🎉 Ты сегодня молодец! Все приёмы пищи подтверждены вовремя!"
         elif hours < 4:
@@ -118,8 +124,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             message = f"💝 Котик, давно не было подтверждений... Всё хорошо?"
     else:
-        message = "📊 Я ещё не получал подтверждений от тебя. Надеюсь, ты кушаешь регулярно!"
-
+        message = "📊 Я ещё не получал подтверждений. Надеюсь, ты кушаешь регулярно!"
     await update.message.reply_text(message)
 
 
@@ -143,21 +148,16 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     if not TOKEN:
-        logging.error("Токен бота не установлен! Добавьте переменную TOKEN в настройки Render")
+        logging.error("❌ Токен бота не установлен! Добавьте переменную TOKEN в Render → Environment.")
         return
 
     application = Application.builder().token(TOKEN).build()
-
-    # Обработчики команд
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(MessageHandler(filters.Text("Поел(а)"), handle_meal_confirmation))
 
-    # Добавление заданий для напоминаний (будет настроено при вызове /start)
-    # Проверка пропущенных приёмов пищи каждый час (будет настроено при вызове /start)
-
-    logging.info("Бот запущен и работает по Новосибирскому времени!")
+    logging.info("✅ Бот запущен и работает по Новосибирскому времени!")
     application.run_polling()
 
 
