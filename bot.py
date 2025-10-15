@@ -1,7 +1,7 @@
 import logging
 import os
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Updater, CommandHandler, CallbackContext, MessageHandler, Filters
 from datetime import time, datetime
 import pytz
 
@@ -25,17 +25,17 @@ logging.basicConfig(
 )
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def start(update: Update, context: CallbackContext):
     keyboard = [['Поел(а)']]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await update.message.reply_text(
+    update.message.reply_text(
         'Привет, котик! Я буду напоминать тебе о приёмах пищи по Новосибирскому времени 🍽️\n'
         'Нажимай кнопку "Поел(а)" после каждого приёма пищи! 💕',
         reply_markup=reply_markup
     )
 
 
-async def handle_meal_confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def handle_meal_confirmation(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
     USER_CONFIRMATIONS[user_id] = datetime.now(TIMEZONE)
 
@@ -48,10 +48,10 @@ async def handle_meal_confirmation(update: Update, context: ContextTypes.DEFAULT
         "Как же я тобой горжусь! ✨",
     ]
     import random
-    await update.message.reply_text(random.choice(responses))
+    update.message.reply_text(random.choice(responses))
 
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def help_command(update: Update, context: CallbackContext):
     help_text = """
 🍽️ Помощь по боту-напоминателю:
 
@@ -65,10 +65,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 Нажимай "Поел(а)" после каждого приёма пищи!
     """
-    await update.message.reply_text(help_text)
+    update.message.reply_text(help_text)
 
 
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def error_handler(update: Update, context: CallbackContext):
     """Обработчик ошибок"""
     logging.error(f'Ошибка: {context.error}')
 
@@ -78,18 +78,26 @@ def main():
         logging.error("Токен бота не установлен! Добавьте переменную TOKEN в настройки Render")
         return
 
-    application = Application.builder().token(TOKEN).build()
+    # Создаем Updater и передаем ему токен (use_context=True для версии 13.x)
+    updater = Updater(TOKEN, use_context=True)
+
+    # Получаем диспетчер для регистрации обработчиков
+    dp = updater.dispatcher
 
     # Обработчики команд
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(MessageHandler(filters.Text("Поел(а)"), handle_meal_confirmation))
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("help", help_command))
+    dp.add_handler(MessageHandler(Filters.text("Поел(а)"), handle_meal_confirmation))
 
     # Обработчик ошибок
-    application.add_error_handler(error_handler)
+    dp.add_error_handler(error_handler)
 
+    # Запускаем бота
+    updater.start_polling()
+
+    # Бот работает до прерывания
     logging.info("✅ Бот запущен и работает по Новосибирскому времени!")
-    application.run_polling()
+    updater.idle()
 
 
 if __name__ == '__main__':
