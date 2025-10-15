@@ -2,11 +2,33 @@ import os
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 import pytz
-from datetime import time, datetime
+from datetime import time
+from flask import Flask
+from threading import Thread
 import asyncio
+
+# Простой Flask сервер для health checks
+app = Flask(__name__)
+
+
+@app.route('/')
+def health_check():
+    return "Food Reminder Bot is running! 🍽️", 200
+
+
+@app.route('/health')
+def health():
+    return "OK", 200
+
+
+def run_flask():
+    app.run(host='0.0.0.0', port=10000, debug=False)
+
+
+# Запускаем Flask в отдельном потоке
+flask_thread = Thread(target=run_flask, daemon=True)
+flask_thread.start()
 
 # Настройка логирования
 logging.basicConfig(
@@ -135,7 +157,7 @@ def setup_reminders(application: Application):
     schedule = [
         ("breakfast", time(8, 0, 0)),  # Завтрак в 8:00
         ("lunch", time(13, 0, 0)),  # Обед в 13:00
-        ("dinner", time(19, 0, 0))  # Ужин в 19:00
+        ("dinner", time(21, 55, 0))  # Ужин в 19:00
     ]
 
     for meal_type, reminder_time in schedule:
@@ -169,6 +191,7 @@ def main():
     logging.info(f"Токен: {'установлен' if BOT_TOKEN else 'не установлен'}")
     logging.info("Часовой пояс: Europe/Samara (UTC+4)")
     logging.info("Расписание: завтрак 8:00, обед 13:00, ужин 19:00")
+    logging.info("Flask сервер запущен на порту 10000")
     logging.info("========================")
 
     # Запускаем бота
