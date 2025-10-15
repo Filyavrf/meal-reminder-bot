@@ -108,7 +108,7 @@ def setup_reminders(application: Application):
     schedule = [
         ("breakfast", time(8, 0, 0, tzinfo=timezone)),  # Завтрак в 8:00
         ("lunch", time(13, 0, 0, tzinfo=timezone)),  # Обед в 13:00
-        ("dinner", time(21, 28, 0, tzinfo=timezone))  # Ужин в 19:00
+        ("dinner", time(21, 31, 0, tzinfo=timezone))  # Ужин в 19:00
     ]
 
     for meal_type, reminder_time in schedule:
