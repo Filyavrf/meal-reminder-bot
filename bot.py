@@ -155,7 +155,7 @@ def setup_reminders(application: Application):
     # Создаем время с учетом часового пояса
     breakfast_time = time(8, 0, 0)
     lunch_time = time(13, 0, 0)
-    dinner_time = time(22, 12, 0)
+    dinner_time = time(22, 15, 0)
 
     # Расписание напоминаний
     schedule = [
