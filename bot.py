@@ -3,10 +3,9 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 import pytz
-from datetime import time
+from datetime import time, datetime
 from flask import Flask
 from threading import Thread
-import asyncio
 
 # Простой Flask сервер для health checks
 app = Flask(__name__)
@@ -59,9 +58,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"Привет, {user.first_name}! Я буду напоминать тебе о приемах пищи 🍽️\n"
         "Теперь ты будешь получать напоминания:\n"
-        "🍳 Завтрак в 8:00 (UTC+4)\n"
-        "🍲 Обед в 13:00 (UTC+4)\n"
-        "🍽️ Ужин в 19:00 (UTC+4)\n\n"
+        "🍳 Завтрак в 8:00 (Новосибирск, UTC+7)\n"
+        "🍲 Обед в 13:00 (Новосибирск, UTC+7)\n"
+        "🍽️ Ужин в 19:00 (Новосибирск, UTC+7)\n\n"
         "Не забудь нажимать кнопку 'Поела', когда поешь! 💖"
     )
 
@@ -150,24 +149,31 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def setup_reminders(application: Application):
     """Настройка расписания напоминаний"""
-    # Часовой пояс UTC+4 (например, Самара)
-    timezone = pytz.timezone('Europe/Samara')
+    # Часовой пояс Новосибирска (UTC+7)
+    timezone = pytz.timezone('Asia/Novosibirsk')
 
-    # Расписание напоминаний (время UTC+4)
+    # Создаем время с учетом часового пояса
+    breakfast_time = time(8, 0, 0)
+    lunch_time = time(13, 0, 0)
+    dinner_time = time(22, 0, 0)
+
+    # Расписание напоминаний
     schedule = [
-        ("breakfast", time(8, 0, 0)),  # Завтрак в 8:00
-        ("lunch", time(13, 0, 0)),  # Обед в 13:00
-        ("dinner", time(21, 55, 0))  # Ужин в 19:00
+        ("breakfast", breakfast_time),
+        ("lunch", lunch_time),
+        ("dinner", dinner_time)
     ]
 
     for meal_type, reminder_time in schedule:
+        # Применяем часовой пояс ко времени
+        localized_time = timezone.localize(datetime.combine(datetime.today(), reminder_time)).timetz()
+
         application.job_queue.run_daily(
             send_meal_reminder,
-            time=reminder_time,
+            time=localized_time,
             days=(0, 1, 2, 3, 4, 5, 6),  # Все дни недели
             data=meal_type,
-            name=f"meal_reminder_{meal_type}",
-            timezone=timezone
+            name=f"meal_reminder_{meal_type}"
         )
 
     logging.info("Напоминания настроены")
@@ -189,7 +195,7 @@ def main():
     # Логируем информацию о настройках
     logging.info("=== Информация о боте ===")
     logging.info(f"Токен: {'установлен' if BOT_TOKEN else 'не установлен'}")
-    logging.info("Часовой пояс: Europe/Samara (UTC+4)")
+    logging.info("Часовой пояс: Asia/Novosibirsk (UTC+7)")
     logging.info("Расписание: завтрак 8:00, обед 13:00, ужин 19:00")
     logging.info("Flask сервер запущен на порту 10000")
     logging.info("========================")
