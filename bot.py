@@ -161,7 +161,7 @@ def setup_reminders(application: Application):
     schedule = [
         ("breakfast", 1, 0),  # Завтрак в 1:00 UTC (8:00 Новосибирск)
         ("lunch", 6, 0),  # Обед в 6:00 UTC (13:00 Новосибирск)
-        ("dinner", 13, 0)  # Ужин в 13:00 UTC (20:00 Новосибирск)
+        ("dinner", 15, 35)  # Ужин в 13:00 UTC (20:00 Новосибирск)
     ]
 
     for meal_type, hour, minute in schedule:
