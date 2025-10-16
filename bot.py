@@ -6,6 +6,9 @@ import pytz
 from datetime import time, datetime
 from flask import Flask
 from threading import Thread
+import requests
+from threading import Thread
+import time
 
 # Простой Flask сервер для health checks
 app = Flask(__name__)
@@ -178,6 +181,17 @@ def setup_reminders(application: Application):
 
     logging.info("Напоминания настроены")
 
+def keep_alive():
+    """Периодически пингует сервис чтобы предотвратить 'засыпание'"""
+    while True:
+        try:
+            # Замените 'your-bot-name' на имя вашего сервиса в Render
+            requests.get('https://meal-reminder-bot-fgq2.onrender.com/health', timeout=10)
+            print("Пинг отправлен для предотвращения сна")
+            time.sleep(600)  # Пинг каждые 10 минут (меньше 15)
+        except Exception as e:
+            print(f"Ошибка пинга: {e}")
+            time.sleep(600)
 
 def main():
     """Основная функция"""
@@ -202,6 +216,7 @@ def main():
 
     # Запускаем бота
     logging.info("Бот запускается...")
+    Thread(target=keep_alive, daemon=True).start()
     application.run_polling()
     logging.info("Бот остановлен")
 
