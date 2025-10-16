@@ -1,5 +1,6 @@
 import os
 import logging
+import time as time_module  # Переименуем модуль time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 import pytz
@@ -7,26 +8,20 @@ from datetime import time, datetime
 from flask import Flask
 from threading import Thread
 import requests
-from threading import Thread
-import time
 
 # Простой Flask сервер для health checks
 app = Flask(__name__)
-
 
 @app.route('/')
 def health_check():
     return "Food Reminder Bot is running! 🍽️", 200
 
-
 @app.route('/health')
 def health():
     return "OK", 200
 
-
 def run_flask():
-    app.run(host='0.0.0.0', port=10000, debug=False)
-
+    app.run(host='0.0.0.0', port=10000, debug=False, use_reloader=False)
 
 # Запускаем Flask в отдельном потоке
 flask_thread = Thread(target=run_flask, daemon=True)
@@ -48,7 +43,6 @@ if not BOT_TOKEN:
 # Глобальный словарь для хранения chat_id пользователей
 user_chats = set()
 
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
     user = update.effective_user
@@ -67,7 +61,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Не забудь нажимать кнопку 'Поела', когда поешь, люблю! 💖"
     )
 
-
 async def test_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Тестовая команда для отправки напоминания"""
     chat_id = update.effective_chat.id
@@ -84,7 +77,6 @@ async def test_reminder(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text="🔧 **Тестовое напоминание!**\nКотик, пора покушать! 🍽️\nЭто тестовое сообщение для проверки бота.",
         reply_markup=reply_markup
     )
-
 
 async def send_meal_reminder(context: ContextTypes.DEFAULT_TYPE):
     """Отправка напоминания о приеме пищи всем пользователям"""
@@ -108,7 +100,7 @@ async def send_meal_reminder(context: ContextTypes.DEFAULT_TYPE):
 
     message_text = messages.get(meal_type, "Котик, пора покушать! 🍽️")
 
-    # Отправляем сообщение всем пользователям
+    # Отправляем сообщение всем пользователей
     successful_sends = 0
     for chat_id in user_chats.copy():
         try:
@@ -124,7 +116,6 @@ async def send_meal_reminder(context: ContextTypes.DEFAULT_TYPE):
             user_chats.discard(chat_id)
 
     logging.info(f"Успешно отправлено: {successful_sends} напоминаний")
-
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик нажатия на инлайн-кнопку"""
@@ -149,34 +140,26 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=None
     )
 
-
 def setup_reminders(application: Application):
     """Настройка расписания напоминаний"""
     # Часовой пояс Новосибирска (UTC+7)
     timezone = pytz.timezone('Asia/Novosibirsk')
 
-    # Создаем время с учетом часового пояса
-    breakfast_time = time(8, 0, 0)
-    lunch_time = time(13, 0, 0)
-    dinner_time = time(20, 0, 0)
-
-    # Расписание напоминаний
+    # Расписание напоминаний (используем простой подход)
     schedule = [
-        ("breakfast", breakfast_time),
-        ("lunch", lunch_time),
-        ("dinner", dinner_time)
+        ("breakfast", 8, 0),   # Завтрак в 8:00
+        ("lunch", 13, 0),      # Обед в 13:00
+        ("dinner", 20, 0)      # Ужин в 20:00
     ]
 
-    for meal_type, reminder_time in schedule:
-        # Применяем часовой пояс ко времени
-        localized_time = timezone.localize(datetime.combine(datetime.today(), reminder_time)).timetz()
-
+    for meal_type, hour, minute in schedule:
         application.job_queue.run_daily(
             send_meal_reminder,
-            time=localized_time,
+            time=time(hour, minute, 0),  # Используем time из datetime
             days=(0, 1, 2, 3, 4, 5, 6),  # Все дни недели
             data=meal_type,
-            name=f"meal_reminder_{meal_type}"
+            name=f"meal_reminder_{meal_type}",
+            timezone=timezone
         )
 
     logging.info("Напоминания настроены")
@@ -185,13 +168,13 @@ def keep_alive():
     """Периодически пингует сервис чтобы предотвратить 'засыпание'"""
     while True:
         try:
-            # Замените 'your-bot-name' на имя вашего сервиса в Render
+            # URL вашего сервиса на Render
             requests.get('https://meal-reminder-bot-fgq2.onrender.com/health', timeout=10)
-            print("Пинг отправлен для предотвращения сна")
-            time.sleep(600)  # Пинг каждые 10 минут (меньше 15)
+            logging.info("Пинг отправлен для предотвращения сна")
+            time_module.sleep(600)  # Пинг каждые 10 минут (меньше 15)
         except Exception as e:
-            print(f"Ошибка пинга: {e}")
-            time.sleep(600)
+            logging.error(f"Ошибка пинга: {e}")
+            time_module.sleep(600)
 
 def main():
     """Основная функция"""
@@ -206,20 +189,22 @@ def main():
     # Настраиваем расписание
     setup_reminders(application)
 
+    # Запускаем keep-alive в отдельном потоке
+    keep_alive_thread = Thread(target=keep_alive, daemon=True)
+    keep_alive_thread.start()
+
     # Логируем информацию о настройках
     logging.info("=== Информация о боте ===")
     logging.info(f"Токен: {'установлен' if BOT_TOKEN else 'не установлен'}")
     logging.info("Часовой пояс: Asia/Novosibirsk (UTC+7)")
-    logging.info("Расписание: завтрак 8:00, обед 13:00, ужин 19:00")
+    logging.info("Расписание: завтрак 8:00, обед 13:00, ужин 20:00")
     logging.info("Flask сервер запущен на порту 10000")
     logging.info("========================")
 
     # Запускаем бота
     logging.info("Бот запускается...")
-    Thread(target=keep_alive, daemon=True).start()
     application.run_polling()
     logging.info("Бот остановлен")
-
 
 if __name__ == '__main__':
     main()
